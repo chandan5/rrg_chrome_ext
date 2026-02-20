@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RRG Chart</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <h1>RRG Chart</h1>
+        <p id="status" class="status">Loading active tab context...</p>
+      </header>
+
+      <section class="controls">
+        <label class="field stockField">
+          <span>Add Stock</span>
+          <div class="row">
+            <input id="symbolInput" type="text" maxlength="20" autocomplete="off" placeholder="RELIANCE" list="stockSuggestions" />
+            <button id="addStockBtn" type="button" class="secondary">Add</button>
+          </div>
+        </label>
+        <datalist id="stockSuggestions"></datalist>
+
+        <div id="stockList" class="stockList" aria-label="Selected stocks"></div>
+        <button id="clearAllStocksBtn" type="button" class="clearAllBtn" hidden>Clear All</button>
+
+        <label class="field">
+          <span>Benchmark</span>
+          <select id="benchmarkSelect">
+            <option value="^NSEI">Nifty 50 (^NSEI)</option>
+            <option value="^CRSLDX">Nifty 500 (^CRSLDX)</option>
+            <option value="HDFCSML250.NS">Nifty Smallcap 250 (HDFCSML250.NS)</option>
+            <option value="^NSEMDCP50">Nifty Midcap 50 (^NSEMDCP50)</option>
+            <option value="^NSEBANK">Nifty Bank (^NSEBANK)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Timeframe (weeks)</span>
+          <div class="rangeRow">
+            <input id="timeframeInput" type="range" min="1" max="26" step="1" value="6" />
+            <output id="timeframeValue" for="timeframeInput">6W</output>
+          </div>
+        </label>
+
+      </section>
+
+      <section class="chartWrap">
+        <div class="chartStage">
+          <canvas id="rrgCanvas" width="408" height="408" aria-label="Relative Rotation Graph"></canvas>
+          <div id="chartLoading" class="chartLoading" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="loadingText">Loading RRG...</span>
+          </div>
+        </div>
+        <div class="legend">
+          <span class="dot"></span>
+          <span id="legendText">No data</span>
+        </div>
+        <ul id="errorList" class="errorList"></ul>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

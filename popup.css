@@ -1,0 +1,275 @@
+:root {
+  --panel: #ffffff;
+  --text: #1f2a37;
+  --muted: #667085;
+  --accent: #0b6bcb;
+  --line: #d7deea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #eef3fb 0%, #f8fafd 100%);
+  color: var(--text);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.app {
+  width: 456px;
+  padding: 14px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 16px;
+}
+
+.status.error {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.controls {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stockField,
+.stockList,
+.toggle {
+  grid-column: 1 / -1;
+}
+
+.clearAllBtn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.clearAllBtn:hover {
+  color: #1f3f6e;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+input[type="text"],
+select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--panel);
+  width: 100%;
+}
+
+input:focus {
+  outline: 2px solid #cfe4ff;
+  border-color: #9fc9f5;
+}
+
+select:focus {
+  outline: 2px solid #cfe4ff;
+  border-color: #9fc9f5;
+}
+
+.secondary {
+  width: 74px;
+  background: #e8f1fb;
+  color: #0b4f91;
+  border: 1px solid #bfd7f2;
+}
+
+.stockList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #edf4ff;
+  color: #17406b;
+  border: 1px solid #c4daff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.chip button {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 0;
+  background: #bfd7f8;
+  color: #173e68;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0;
+}
+
+.rangeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+output {
+  min-width: 34px;
+  text-align: right;
+  color: #173e68;
+  font-weight: 700;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+button {
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chartWrap {
+  margin-top: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.chartStage {
+  position: relative;
+}
+
+canvas {
+  width: 100%;
+  border-radius: 8px;
+  display: block;
+}
+
+.chartLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(242, 246, 251, 0.78);
+  color: #17406b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chartLoading[hidden] {
+  display: none !important;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid #c7daf2;
+  border-top-color: #0b6bcb;
+  animation: spin 0.9s linear infinite;
+}
+
+.loadingText {
+  letter-spacing: 0.2px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.legend {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #0066cc;
+  display: inline-block;
+}
+
+.errorList {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: #a03e3e;
+  font-size: 11px;
+}

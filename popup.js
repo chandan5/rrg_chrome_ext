@@ -331,10 +331,10 @@ async function loadChart(fromAutoSwitch) {
     setChartLoading(false);
     state.isLoading = false;
 
-    if (state.pendingAutoSymbol && !hasStockByInstrument(state.pendingAutoSymbol)) {
+    if (state.pendingAutoSymbol) {
       const pending = state.pendingAutoSymbol;
       state.pendingAutoSymbol = "";
-      if (await tryAddStock(pending, true, false)) {
+      if (!hasStockByInstrument(pending) && await tryAddStock(pending, true, false)) {
         renderStockList();
         await persistState();
         await loadChart(true);
@@ -746,7 +746,13 @@ function prefersResolvedSymbol(candidate, existing) {
 function pickBenchmark(value) {
   const normalized = normalizeSymbol(value);
   const allowed = new Set(["^NSEI", "^CRSLDX", "HDFCSML250.NS", "^NSEMDCP50", "^NSEBANK"]);
-  return allowed.has(normalized) ? normalized : DEFAULT_BENCHMARK;
+  if (allowed.has(normalized)) {
+    return normalized;
+  }
+  if (/^\^[A-Z0-9._-]{2,20}$/.test(normalized) || /^[A-Z][A-Z0-9._-]{0,24}\.(NS|BO)$/i.test(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_BENCHMARK;
 }
 
 function setStatus(message, tone = "info") {

@@ -192,7 +192,7 @@ async function fetchStockSuggestions(query) {
 
 async function refreshActiveStockContext(tabId) {
   const tab = await resolveTargetTab(tabId);
-  if (!tab?.id) {
+  if (tab?.id == null) {
     return { symbol: "", source: "none", confidence: 0 };
   }
 
@@ -221,7 +221,7 @@ async function refreshActiveStockContext(tabId) {
 }
 
 async function resolveTargetTab(tabId) {
-  if (tabId) {
+  if (tabId != null) {
     try {
       return await chrome.tabs.get(tabId);
     } catch (_error) {

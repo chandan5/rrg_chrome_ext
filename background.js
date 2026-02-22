@@ -1,3 +1,8 @@
+const GA4_MEASUREMENT_ID = "G-PGBYXYQNS1";
+// TODO(telemetry): Temporary client-side secret; move GA4 Measurement Protocol calls to a backend and remove this from the extension bundle.
+const GA4_API_SECRET = "50NdcL9eRhq7Xcl3PTQwQw";
+const GA4_ENDPOINT = `https://www.google-analytics.com/mp/collect?measurement_id=${GA4_MEASUREMENT_ID}&api_secret=${GA4_API_SECRET}`;
+
 const DEFAULT_BENCHMARK = "^NSEI";
 const DEFAULT_TIMEFRAME_WEEKS = 6;
 const MIN_TIMEFRAME_WEEKS = 1;
@@ -253,6 +258,28 @@ async function extractFromContentScript(tabId) {
   return null;
 }
 
+async function getClientId() {
+  const stored = await chrome.storage.local.get("_cid");
+  if (stored._cid) return stored._cid;
+  const cid = crypto.randomUUID();
+  await chrome.storage.local.set({ _cid: cid });
+  return cid;
+}
+
+async function track(eventName, params = {}) {
+  try {
+    await fetch(GA4_ENDPOINT, {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: await getClientId(),
+        events: [{ name: eventName, params }]
+      })
+    });
+  } catch (error) {
+    console.debug("Failed to track event", eventName, params, error);
+  }
+}
+
 function inferSymbolFromTabMeta(tab) {
   const href = tab?.url || "";
   const title = tab?.title || "";
@@ -352,6 +379,14 @@ async function fetchAndBuildMultiRrg({ symbols, benchmark, timeframeWeeks }) {
     benchmark: benchmarkData.resolvedSymbol,
     timeframeWeeks: safeWeeks,
     lastUpdatedAt: updatedAt
+  });
+
+  track("chart_loaded", {
+    symbols: series.map(s => s.symbol).join(",").slice(0, 100),
+    symbol_count: series.length,
+    failed_count: errors.length,
+    benchmark: benchmarkData.resolvedSymbol,
+    timeframe_weeks: safeWeeks
   });
 
   return {

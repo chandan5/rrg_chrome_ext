@@ -131,8 +131,70 @@ async function validateStockSymbol(symbol) {
     const data = await fetchCloseSeriesResolved(symbol, "stock", DEFAULT_TIMEFRAME_WEEKS);
     return { valid: true, resolvedSymbol: data.resolvedSymbol, error: "" };
   } catch (error) {
+    const fallback = await resolveStockFromSuggestions(symbol);
+    if (fallback) {
+      return { valid: true, resolvedSymbol: fallback, error: "" };
+    }
     return { valid: false, resolvedSymbol: "", error: error.message || "Symbol not found" };
   }
+}
+
+async function resolveStockFromSuggestions(query) {
+  const queries = buildSuggestionQueries(query);
+
+  for (const queryText of queries) {
+    const payload = await fetchStockSuggestions(queryText);
+    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+
+    for (const suggestion of suggestions) {
+      const suggestedSymbol = normalizeSymbol(suggestion?.symbol);
+      if (!suggestedSymbol) {
+        continue;
+      }
+
+      try {
+        const data = await fetchCloseSeriesResolved(suggestedSymbol, "stock", DEFAULT_TIMEFRAME_WEEKS);
+        return data.resolvedSymbol;
+      } catch (_error) {
+        // Try the next suggestion.
+      }
+    }
+  }
+
+  return "";
+}
+
+function buildSuggestionQueries(query) {
+  const raw = String(query || "").trim();
+  const normalized = normalizeSymbol(raw);
+  const queries = [];
+
+  function add(value) {
+    const text = String(value || "").trim();
+    if (!text || text.length < 2) {
+      return;
+    }
+    if (!queries.includes(text)) {
+      queries.push(text);
+    }
+  }
+
+  add(raw);
+  add(normalized);
+
+  const spaced = normalized
+    .replace(/[-._:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  add(spaced);
+
+  const withoutLegalSuffix = spaced
+    .replace(/\b(LIMITED|LTD|LIMITEDCOMPANY|COMPANY|CORPORATION|CORP)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  add(withoutLegalSuffix);
+
+  return queries;
 }
 
 async function fetchStockSuggestions(query) {
@@ -255,11 +317,54 @@ async function extractFromContentScript(tabId) {
 
 function inferSymbolFromTabMeta(tab) {
   const href = tab?.url || "";
+  const pathname = safePathname(href);
   const title = tab?.title || "";
+  const host = safeHost(href);
   const candidates = [];
 
   pushMatches(candidates, href, /(?:[?&](?:symbol|ticker|s|scId|stock)=)([A-Z0-9.\-:]{1,20})/gi, 0.9, "url_query");
   pushMatches(candidates, href, /\/(?:company|stocks|stock|quote|symbol)\/([A-Z0-9.\-]{1,20})(?:[/?#]|$)/gi, 0.86, "url_path");
+  if (host.includes("chartink.com")) {
+    pushMatches(candidates, pathname, /\/stocks\/([A-Z0-9.\-]{1,20})\.html(?:[/?#]|$)/gi, 0.99, "chartink_stock_page");
+  }
+  if (host.includes("tickertape.in")) {
+    pushMatches(candidates, title, /\b([A-Z][A-Z0-9.\-]{1,14})\s+Share Price\b/g, 0.99, "tickertape_title");
+    pushMatches(candidates, title, /\bStock Price\s+(?:NSE|BSE)\s*[:|-]?\s*([A-Z][A-Z0-9.\-]{1,14})\b/g, 0.97, "tickertape_title_exchange");
+  }
+  if (host.includes("nseindia.com")) {
+    const nseTicker = extractNseQuoteTicker(pathname);
+    if (nseTicker) {
+      candidates.push({
+        symbol: nseTicker,
+        confidence: 0.995,
+        source: "nse_quote_company_slug"
+      });
+    }
+  }
+  if (host.includes("bseindia.com")) {
+    const bseTicker = extractBseQuoteTicker(pathname);
+    if (bseTicker) {
+      candidates.push({
+        symbol: bseTicker,
+        confidence: 0.995,
+        source: "bse_quote_symbol_slug"
+      });
+    }
+  }
+  if (host.includes("marketsmojo.com")) {
+    pushMatches(candidates, title, /\b([A-Z][A-Z0-9.\-]{1,14})\s+Share Price\b/g, 0.97, "marketsmojo_title");
+    pushMatches(candidates, title, /\(([A-Z][A-Z0-9.\-]{1,14})\)/g, 0.95, "marketsmojo_title_paren");
+  }
+  if (host.includes("moneycontrol.com")) {
+    const moneycontrolCompany = extractMoneycontrolCompanySlug(pathname);
+    if (moneycontrolCompany) {
+      candidates.push({
+        symbol: moneycontrolCompany,
+        confidence: 0.98,
+        source: "moneycontrol_company_slug"
+      });
+    }
+  }
   pushMatches(candidates, `${href} ${title}`, /(?:NSE|BSE)\s*[:|-]\s*([A-Z][A-Z0-9.\-]{1,10})/gi, 0.92, "exchange_hint");
   pushMatches(candidates, title, /\(([A-Z][A-Z0-9.\-]{1,10})\)/g, 0.74, "title_paren");
 
@@ -576,6 +681,63 @@ function isLikelyTicker(symbol) {
   }
 
   return /^[A-Z^][A-Z0-9.\-:^]*$/.test(symbol);
+}
+
+function safePathname(href) {
+  try {
+    return new URL(href).pathname || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function safeHost(href) {
+  try {
+    return new URL(href).hostname || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function extractMoneycontrolCompanySlug(pathname) {
+  const match = String(pathname || "").match(
+    /\/india\/stockpricequote\/[^/]+\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:[/?#]|$)/i
+  );
+  if (!match) {
+    return "";
+  }
+
+  const slug = match[1].replace(/-+/g, "");
+  return normalizeSymbol(slug);
+}
+
+function extractNseQuoteTicker(pathname) {
+  const match = String(pathname || "").match(
+    /\/get-quote\/equity\/[A-Z0-9.\-]{1,30}\/([A-Z0-9\-]{2,80})(?:[/?#]|$)/i
+  );
+  if (!match) {
+    return "";
+  }
+
+  const cleaned = match[1]
+    .toUpperCase()
+    .replace(/[^A-Z0-9\-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 20);
+
+  return normalizeSymbol(cleaned);
+}
+
+function extractBseQuoteTicker(pathname) {
+  const match = String(pathname || "").match(
+    /\/stock-share-price\/[a-z0-9\-]{2,120}\/([a-z0-9.\-]{1,20})\/[0-9]{3,12}(?:[/?#]|$)/i
+  );
+  if (!match) {
+    return "";
+  }
+
+  return normalizeSymbol(match[1]);
 }
 
 function unique(values) {

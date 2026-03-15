@@ -10,6 +10,45 @@ const MAX_TIMEFRAME_WEEKS = 26;
 const HISTORY_RANGE = "2y";
 const HISTORY_INTERVAL = "1wk";
 
+// --- In-memory response cache for Yahoo Finance API calls ---
+// Cache entries expire after their TTL. The service worker's ephemeral
+// lifetime means the cache self-clears whenever Chrome suspends the worker.
+// Friday (IST) = weekly candle finalization day → shorter TTL for fresher data.
+function getChartTtlMs() {
+  const istDay = new Date(Date.now() + (5.5 * 60 * 60 * 1000)).getUTCDay(); // 5 = Friday
+  return istDay === 5 ? 15 * 60 * 1000 : 4 * 60 * 60 * 1000;
+}
+const CACHE_TTL_SUGGESTIONS_MS = 24 * 60 * 60 * 1000; // 24 hours — listed stocks rarely change (IPO/delist only)
+const CACHE_MAX_ENTRIES = 200;
+const _apiCache = new Map();
+
+function cacheGet(key) {
+  const entry = _apiCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) {
+    _apiCache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value, ttlMs) {
+  // Evict expired entries if we're approaching the size limit.
+  if (_apiCache.size >= CACHE_MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [k, v] of _apiCache) {
+      if (now > v.expiresAt) _apiCache.delete(k);
+    }
+  }
+  // If still at the limit after eviction, drop the oldest entry.
+  if (_apiCache.size >= CACHE_MAX_ENTRIES) {
+    const oldestKey = _apiCache.keys().next().value;
+    _apiCache.delete(oldestKey);
+  }
+  _apiCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+
 const BENCHMARK_ALIASES = {
   NIFTY50: ["^NSEI"],
   NIFTY: ["^NSEI"],
@@ -208,6 +247,10 @@ async function fetchStockSuggestions(query) {
     return { suggestions: [] };
   }
 
+  const cacheKey = `suggestions:${text.toUpperCase()}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
   const url = new URL("https://query2.finance.yahoo.com/v1/finance/search");
   url.searchParams.set("q", text);
   url.searchParams.set("quotesCount", "12");
@@ -254,7 +297,9 @@ async function fetchStockSuggestions(query) {
     });
   }
 
-  return { suggestions: suggestions.slice(0, 10) };
+  const result = { suggestions: suggestions.slice(0, 10) };
+  cacheSet(cacheKey, result, CACHE_TTL_SUGGESTIONS_MS);
+  return result;
 }
 
 async function refreshActiveStockContext(tabId) {
@@ -302,10 +347,12 @@ async function resolveTargetTab(tabId) {
 
 async function extractFromContentScript(tabId) {
   try {
-    const response = await chrome.tabs.sendMessage(tabId, {
-      type: "EXTRACT_STOCK_CONTEXT"
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"]
     });
 
+    const response = results?.[0]?.result;
     if (response?.symbol) {
       return {
         symbol: normalizeSymbol(response.symbol),
@@ -314,7 +361,7 @@ async function extractFromContentScript(tabId) {
       };
     }
   } catch (_error) {
-    // Content script is unavailable on restricted pages.
+    // Injection fails on restricted pages (chrome://, webstore, etc.).
   }
 
   return null;
@@ -377,6 +424,9 @@ function inferSymbolFromTabMeta(tab) {
         source: "bse_quote_symbol_slug"
       });
     }
+  }
+  if (host.includes("kite.zerodha.com")) {
+    pushMatches(candidates, pathname, /\/markets\/chart\/[^/]+\/[^/]+\/(?:NSE|BSE)\/([A-Z0-9.\-]{1,20})\/\d+(?:[/?#]|$)/gi, 0.99, "kite_chart");
   }
   if (host.includes("marketsmojo.com")) {
     pushMatches(candidates, title, /\b([A-Z][A-Z0-9.\-]{1,14})\s+Share Price\b/g, 0.97, "marketsmojo_title");
@@ -575,6 +625,16 @@ function buildYahooCandidates(input, kind) {
 }
 
 async function fetchCloseSeries(symbol, minRows) {
+  const cacheKey = `chart:${symbol}:${HISTORY_RANGE}:${HISTORY_INTERVAL}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    // Even from cache, validate minRows for this particular call.
+    if (cached.length >= Math.max(1, Number(minRows) || 0)) {
+      return cached;
+    }
+    // Cached data exists but has fewer rows than needed — refetch.
+  }
+
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
   url.searchParams.set("range", HISTORY_RANGE);
   url.searchParams.set("interval", HISTORY_INTERVAL);
@@ -611,6 +671,7 @@ async function fetchCloseSeries(symbol, minRows) {
     throw new Error("Insufficient history");
   }
 
+  cacheSet(cacheKey, rows, getChartTtlMs());
   return rows;
 }
 

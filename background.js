@@ -433,13 +433,9 @@ function inferSymbolFromTabMeta(tab) {
     pushMatches(candidates, title, /\(([A-Z][A-Z0-9.\-]{1,14})\)/g, 0.95, "marketsmojo_title_paren");
   }
   if (host.includes("moneycontrol.com")) {
-    const moneycontrolCompany = extractMoneycontrolCompanySlug(pathname);
-    if (moneycontrolCompany) {
-      candidates.push({
-        symbol: moneycontrolCompany,
-        confidence: 0.98,
-        source: "moneycontrol_company_slug"
-      });
+    const mcSlugs = extractMoneycontrolCompanySlugs(pathname);
+    for (const slug of mcSlugs) {
+      candidates.push(slug);
     }
   }
   pushMatches(candidates, `${href} ${title}`, /(?:NSE|BSE)\s*[:|-]\s*([A-Z][A-Z0-9.\-]{1,10})/gi, 0.92, "exchange_hint");
@@ -795,16 +791,29 @@ function safeHost(href) {
   }
 }
 
-function extractMoneycontrolCompanySlug(pathname) {
+function extractMoneycontrolCompanySlugs(pathname) {
+  // Match /india/stockpricequote/{sector}/{company-slug}/{mc-code}
+  // or /technical-analysis/{company-slug}/{mc-code}/{timeframe}
   const match = String(pathname || "").match(
     /\/india\/stockpricequote\/[^/]+\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:[/?#]|$)/i
+  ) || String(pathname || "").match(
+    /\/technical-analysis\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:\/[a-z0-9-]{1,20})?(?:[/?#]|$)/i
   );
   if (!match) {
-    return "";
+    return [];
   }
 
-  const slug = match[1].replace(/-+/g, "");
-  return normalizeSymbol(slug);
+  const rawSlug = match[1].replace(/-+/g, "");
+  const slug = normalizeSymbol(rawSlug);
+  if (!slug) {
+    return [];
+  }
+
+  const results = [];
+  // Push as-is (some slugs are tickers, e.g. "larsentoubro" → LT won't work, but short ones might)
+  results.push({ symbol: slug, confidence: 0.85, source: "moneycontrol_company_slug" });
+
+  return results;
 }
 
 function extractNseQuoteTicker(pathname) {

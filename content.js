@@ -41,20 +41,45 @@
   }
 
   if (host.includes("moneycontrol.com")) {
+    // 1. Best source: nseid hidden input (only on stockpricequote pages, client-rendered)
     const nseidEl = document.getElementById("nseid");
     const nseidValue = normalizeSymbol(nseidEl?.value || "");
     if (nseidValue && !/^(NA|NIL|NONE|NULL|0)$/.test(nseidValue)) {
       candidates.push({ symbol: nseidValue, confidence: 1, source: "moneycontrol_nseid" });
     }
 
-    const mcMatch = String(pathname || "").match(
-      /\/india\/stockpricequote\/[^/]+\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:[/?#]|$)/i
-    );
-    if (mcMatch) {
-      const slug = normalizeSymbol(mcMatch[1].replace(/-+/g, ""));
-      if (slug) candidates.push({ symbol: slug, confidence: 0.88, source: "moneycontrol_company_slug" });
+    // 1b. Also highly reliable: inline scripts with nseId (works on TA pages and before DOM fully mounts)
+    const scripts = document.querySelectorAll('script');
+    for (const script of scripts) {
+      const match = (script.textContent || "").match(/(?:"nseid"|"nseId"|var\s+nseId)\s*[:=]\s*"([A-Z0-9.\-]+)"/i);
+      if (match && match[1]) {
+        const val = normalizeSymbol(match[1]);
+        if (val && !/^(NA|NIL|NONE|NULL|0)$/.test(val)) {
+          candidates.push({ symbol: val, confidence: 1, source: "moneycontrol_script_nseid" });
+          break;
+        }
+      }
     }
+
+    // 2. Detect NSE/BSE ticker from page text / title
     pushMatches(candidates, `${href} ${title}`, /(?:NSE|BSE)\s*[:|-]\s*([A-Z][A-Z0-9.\-]{1,10})/gi, 0.94, "moneycontrol_exchange");
+
+    // 3. Extract company slug from stockpricequote OR technical-analysis URLs
+    //    stockpricequote: /india/stockpricequote/{sector}/{company-slug}/{mc-code}
+    //    technical-analysis: /technical-analysis/{company-slug}/{mc-code}/{timeframe}
+    const mcSlugMatch = String(pathname || "").match(
+      /\/india\/stockpricequote\/[^/]+\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:[/?#]|$)/i
+    ) || String(pathname || "").match(
+      /\/technical-analysis\/([a-z0-9-]{2,60})\/[a-z0-9-]{1,20}(?:\/[a-z0-9-]{1,20})?(?:[/?#]|$)/i
+    );
+    if (mcSlugMatch) {
+      const rawSlug = mcSlugMatch[1].replace(/-+/g, "");
+      const slug = normalizeSymbol(rawSlug);
+      if (slug) {
+        // Try as-is first (some slugs happen to be tickers e.g. "LT")
+        candidates.push({ symbol: slug, confidence: 0.85, source: "moneycontrol_company_slug" });
+      }
+    }
   }
 
   if (host.includes("tickertape.in")) {
